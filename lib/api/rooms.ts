@@ -1,3 +1,4 @@
+import { ensureUserProfile, getSavedJoinProfile } from '@/lib/api/profile';
 import { supabase } from '@/lib/supabase';
 import type {
   CreateRoomInput,
@@ -5,6 +6,7 @@ import type {
   Room,
   RoomMember,
   RoomWithMemberCount,
+  UpdateRoomInput,
 } from '@/lib/types/database';
 import { generateInviteCode } from '@/lib/utils/room-code';
 
@@ -26,6 +28,12 @@ export async function createRoom(
   input: CreateRoomInput,
   hostProfile: MiniProfileInput
 ): Promise<Room> {
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user || auth.user.id !== hostId) {
+    throw new Error('You must be signed in to create a room.');
+  }
+  await ensureUserProfile(auth.user);
+
   const inviteCode = await uniqueInviteCode();
 
   const { data: room, error } = await supabase
@@ -38,6 +46,7 @@ export async function createRoom(
       location: input.location?.trim() || null,
       cover_type: input.cover_type,
       cover_value: input.cover_value,
+      cover_text_color: input.cover_text_color,
       privacy: input.privacy,
       invite_code: inviteCode,
     })
@@ -62,6 +71,40 @@ export async function createRoom(
   if (memberError) throw memberError;
 
   return room;
+}
+
+export async function updateRoom(
+  roomId: string,
+  hostId: string,
+  input: UpdateRoomInput
+): Promise<Room> {
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user || auth.user.id !== hostId) {
+    throw new Error('You must be signed in to edit this room.');
+  }
+
+  const { data, error } = await supabase
+    .from('rooms')
+    .update({
+      title: input.title.trim(),
+      description: input.description?.trim() || null,
+      starts_at: input.starts_at.toISOString(),
+      location: input.location?.trim() || null,
+      cover_type: input.cover_type,
+      cover_value: input.cover_value,
+      cover_text_color: input.cover_text_color,
+      privacy: input.privacy,
+    })
+    .eq('id', roomId)
+    .eq('host_id', hostId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  if (!data) {
+    throw new Error('Room not found or you are not the host.');
+  }
+  return data;
 }
 
 export async function getRoomById(roomId: string): Promise<Room | null> {
@@ -156,11 +199,31 @@ export async function getMembership(
   return data;
 }
 
+/** Join using a previous room profile when available. Returns null if setup is needed. */
+export async function joinRoomWithSavedProfile(
+  roomId: string,
+  userId: string
+): Promise<RoomMember | null> {
+  const existing = await getMembership(roomId, userId);
+  if (existing) return existing;
+
+  const saved = await getSavedJoinProfile(userId);
+  if (!saved) return null;
+
+  return joinRoom(roomId, userId, saved);
+}
+
 export async function joinRoom(
   roomId: string,
   userId: string,
   profile: MiniProfileInput
 ): Promise<RoomMember> {
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user || auth.user.id !== userId) {
+    throw new Error('You must be signed in to join a room.');
+  }
+  await ensureUserProfile(auth.user);
+
   const { data, error } = await supabase
     .from('room_members')
     .insert({
@@ -179,6 +242,14 @@ export async function joinRoom(
     .single();
 
   if (error) throw error;
+
+  const { notifyFriendsInRoom } = await import('@/lib/api/friends');
+  try {
+    await notifyFriendsInRoom(userId, roomId);
+  } catch {
+    // Non-blocking: join should succeed even if friend notifications fail.
+  }
+
   return data;
 }
 

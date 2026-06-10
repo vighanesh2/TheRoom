@@ -12,7 +12,7 @@ import { useFocusEffect } from '@react-navigation/native';
 
 import { Button, GradientHero } from '@/components/ui';
 import { colors, spacing, typography } from '@/constants/theme';
-import { getMembership, getRoomByInviteCode } from '@/lib/api/rooms';
+import { getRoomByInviteCode } from '@/lib/api/rooms';
 import { useAuth } from '@/lib/auth';
 import type { Room } from '@/lib/types/database';
 
@@ -36,15 +36,12 @@ export default function JoinRoomScreen() {
             return;
           }
 
-          if (user) {
-            const membership = await getMembership(roomData.id, user.id);
-            if (membership) {
-              router.replace(`/(main)/room/${roomData.id}`);
-              return;
-            }
-          }
-
           setRoom(roomData);
+
+          if (user) {
+            router.replace(`/(main)/room/${roomData.id}`);
+            return;
+          }
         })
         .catch((err: unknown) => {
           const message = err instanceof Error ? err.message : 'Failed to find room';

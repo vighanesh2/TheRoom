@@ -22,7 +22,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AuthHero } from '@/components/auth/AuthHero';
-import { GlassBackground } from '@/components/auth/GlassBackground';
+import { AuthGlassBackground } from '@/components/auth/AuthGlassBackground';
 import { useAuth } from '@/lib/auth';
 import { isSupabaseConfigured } from '@/lib/supabase';
 
@@ -120,7 +120,7 @@ export default function LoginScreen() {
 
   return (
     <View style={styles.screen}>
-      <GlassBackground />
+      <AuthGlassBackground />
 
       <View style={[styles.content, { paddingTop: insets.top + 12 }]}>
         {!keyboardOpen && (
@@ -217,18 +217,6 @@ export default function LoginScreen() {
                 </View>
               </View>
 
-              {isSignIn && (
-                <Pressable
-                  onPress={() =>
-                    Alert.alert(
-                      'Reset password',
-                      'Password reset will be available soon. For now, create a new account or contact support.'
-                    )
-                  }>
-                  <Text style={styles.forgotText}>Forgot password?</Text>
-                </Pressable>
-              )}
-
               <Pressable
                 style={({ pressed }) => [styles.submit, pressed && styles.submitPressed]}
                 onPress={handleSubmit}
@@ -250,7 +238,7 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: '#08080e',
+    backgroundColor: '#050508',
   },
   content: {
     flex: 1,
@@ -268,7 +256,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
     lineHeight: 38,
     marginTop: 6,
-    textShadowColor: 'rgba(0, 0, 0, 0.4)',
+    textShadowColor: 'rgba(167, 139, 250, 0.35)',
     textShadowOffset: { width: 0, height: 2 },
     textShadowRadius: 2,
   },
@@ -283,9 +271,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.35)',
     borderBottomWidth: 0,
-    shadowColor: '#8b5cf6',
+    shadowColor: '#a78bfa',
     shadowOffset: { width: 0, height: -8 },
-    shadowOpacity: 0.12,
+    shadowOpacity: 0.18,
     shadowRadius: 24,
     elevation: 10,
     overflow: 'hidden',
@@ -362,13 +350,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: '#737373',
-  },
-  forgotText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#000000',
-    textAlign: 'center',
-    marginBottom: 8,
   },
   submit: {
     backgroundColor: '#000000',

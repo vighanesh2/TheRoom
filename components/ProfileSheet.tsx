@@ -1,11 +1,20 @@
 import { Image } from 'expo-image';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Avatar } from '@/components/Avatar';
 import { Button } from '@/components/ui';
+import {
+  acceptFriendRequest,
+  declineFriendRequest,
+  getFriendStatus,
+  sendFriendRequest,
+} from '@/lib/api/friends';
+import { useAuth } from '@/lib/auth';
 import { colors, radius, spacing, typography } from '@/constants/theme';
-import type { RoomMember } from '@/lib/types/database';
+import type { FriendStatus, RoomMember } from '@/lib/types/database';
 
 type ProfileSheetProps = {
   member: RoomMember | null;
@@ -15,8 +24,135 @@ type ProfileSheetProps = {
 
 export function ProfileSheet({ member, visible, onClose }: ProfileSheetProps) {
   const insets = useSafeAreaInsets();
+  const { user } = useAuth();
+  const [friendStatus, setFriendStatus] = useState<FriendStatus>('none');
+  const [requestId, setRequestId] = useState<string | undefined>();
+  const [loadingStatus, setLoadingStatus] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
+
+  useEffect(() => {
+    if (!member || !user || !visible) return;
+
+    setLoadingStatus(true);
+    getFriendStatus(user.id, member.user_id)
+      .then(({ status, requestId: id }) => {
+        setFriendStatus(status);
+        setRequestId(id);
+      })
+      .catch(() => {
+        setFriendStatus('none');
+        setRequestId(undefined);
+      })
+      .finally(() => setLoadingStatus(false));
+  }, [member, user, visible]);
 
   if (!member) return null;
+
+  const handleSendRequest = async () => {
+    if (!user) return;
+    setActionLoading(true);
+    try {
+      const status = await sendFriendRequest(user.id, member.user_id);
+      setFriendStatus(status);
+      if (status === 'friends') {
+        Alert.alert('Connected', `You and ${member.display_name} are now friends.`);
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to send request';
+      Alert.alert('Error', message);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleAccept = async () => {
+    if (!user || !requestId) return;
+    setActionLoading(true);
+    try {
+      await acceptFriendRequest(requestId, user.id);
+      setFriendStatus('friends');
+      Alert.alert('Connected', `You and ${member.display_name} are now friends.`);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to accept request';
+      Alert.alert('Error', message);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleDecline = async () => {
+    if (!user || !requestId) return;
+    setActionLoading(true);
+    try {
+      await declineFriendRequest(requestId, user.id);
+      setFriendStatus('none');
+      setRequestId(undefined);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to decline request';
+      Alert.alert('Error', message);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const renderFriendAction = () => {
+    if (!user || friendStatus === 'self') return null;
+
+    if (loadingStatus) {
+      return (
+        <View style={styles.friendAction}>
+          <ActivityIndicator color={colors.accent} />
+        </View>
+      );
+    }
+
+    if (friendStatus === 'friends') {
+      return (
+        <View style={styles.friendsBadge}>
+          <Ionicons name="heart" size={16} color={colors.accent} />
+          <Text style={styles.friendsText}>Friends</Text>
+        </View>
+      );
+    }
+
+    if (friendStatus === 'pending_sent') {
+      return (
+        <View style={styles.pendingBadge}>
+          <Ionicons name="time-outline" size={16} color={colors.textMuted} />
+          <Text style={styles.pendingText}>Request sent</Text>
+        </View>
+      );
+    }
+
+    if (friendStatus === 'pending_received') {
+      return (
+        <View style={styles.requestActions}>
+          <Button
+            title="Accept"
+            onPress={handleAccept}
+            loading={actionLoading}
+            style={styles.acceptBtn}
+          />
+          <Button
+            title="Decline"
+            variant="secondary"
+            onPress={handleDecline}
+            disabled={actionLoading}
+            style={styles.declineBtn}
+          />
+        </View>
+      );
+    }
+
+    return (
+      <Button
+        title="Add friend"
+        onPress={handleSendRequest}
+        loading={actionLoading}
+        style={styles.addFriendBtn}
+      />
+    );
+  };
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
@@ -65,6 +201,8 @@ export function ProfileSheet({ member, visible, onClose }: ProfileSheetProps) {
             </View>
           ) : null}
         </ScrollView>
+
+        {renderFriendAction()}
         <Button title="Close" variant="secondary" onPress={onClose} />
       </View>
     </Modal>
@@ -98,6 +236,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.sm,
     maxHeight: '80%',
+    gap: spacing.sm,
   },
   handle: {
     width: 40,
@@ -151,6 +290,54 @@ const styles = StyleSheet.create({
   link: {
     ...typography.body,
     color: colors.accent,
+  },
+  friendAction: {
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+  },
+  addFriendBtn: {
+    marginBottom: spacing.xs,
+  },
+  requestActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginBottom: spacing.xs,
+  },
+  acceptBtn: {
+    flex: 1,
+  },
+  declineBtn: {
+    flex: 1,
+  },
+  friendsBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    backgroundColor: colors.accentSoft,
+    paddingVertical: spacing.md,
+    borderRadius: radius.lg,
+    marginBottom: spacing.xs,
+  },
+  friendsText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.accent,
+  },
+  pendingBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    backgroundColor: colors.background,
+    paddingVertical: spacing.md,
+    borderRadius: radius.lg,
+    marginBottom: spacing.xs,
+  },
+  pendingText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.textMuted,
   },
   qrContainer: {
     backgroundColor: colors.surface,

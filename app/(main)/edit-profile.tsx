@@ -1,8 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useRouter } from 'expo-router';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -19,11 +19,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Avatar } from '@/components/Avatar';
 import { RoomsBackground } from '@/components/home/RoomsBackground';
-import { getSavedJoinProfile } from '@/lib/api/profile';
-import { getMembership, joinRoom, joinRoomWithSavedProfile, uploadAvatar } from '@/lib/api/rooms';
+import { getSavedJoinProfile, updateMembershipProfile } from '@/lib/api/profile';
+import { uploadAvatar } from '@/lib/api/rooms';
 import { useAuth } from '@/lib/auth';
 import { useTabBarInset } from '@/lib/hooks/useTabBarInset';
-import type { MiniProfileInput } from '@/lib/types/database';
 
 const NAVY = '#12121F';
 const PURPLE = '#7C3AED';
@@ -36,17 +35,8 @@ const INPUT_PROPS = {
   autoCapitalize: 'sentences' as const,
 };
 
-function FieldInput({
-  style,
-  ...props
-}: React.ComponentProps<typeof TextInput>) {
-  return (
-    <TextInput
-      {...INPUT_PROPS}
-      {...props}
-      style={[styles.rowInput, style]}
-    />
-  );
+function FieldInput({ style, ...props }: React.ComponentProps<typeof TextInput>) {
+  return <TextInput {...INPUT_PROPS} {...props} style={[styles.rowInput, style]} />;
 }
 
 function FormRow({
@@ -79,8 +69,7 @@ function isLocalImageUri(uri: string): boolean {
   return !/^https?:\/\//i.test(uri);
 }
 
-export default function ProfileSetupScreen() {
-  const { roomId } = useLocalSearchParams<{ roomId: string }>();
+export default function EditProfileScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const tabBarInset = useTabBarInset();
@@ -96,21 +85,9 @@ export default function ProfileSetupScreen() {
   const [linkedin, setLinkedin] = useState('');
   const [loading, setLoading] = useState(false);
   const [bootstrapping, setBootstrapping] = useState(true);
-  const [hasSavedProfile, setHasSavedProfile] = useState(false);
-
-  const applySavedProfile = useCallback((saved: MiniProfileInput) => {
-    setDisplayName(saved.display_name);
-    setAvatarUrl(saved.avatar_url ?? null);
-    setHeadline(saved.headline ?? '');
-    setBuilding(saved.building ?? '');
-    setLookingFor(saved.looking_for ?? '');
-    setCanHelpWith(saved.can_help_with ?? '');
-    setLinkedin(saved.linkedin_url ?? '');
-    setHasSavedProfile(true);
-  }, []);
 
   useEffect(() => {
-    if (!user || !roomId) {
+    if (!user) {
       setBootstrapping(false);
       return;
     }
@@ -119,30 +96,22 @@ export default function ProfileSetupScreen() {
 
     (async () => {
       try {
-        const existing = await getMembership(roomId, user.id);
-        if (cancelled) return;
-
-        if (existing) {
-          router.replace(`/(main)/room/${roomId}`);
-          return;
-        }
-
-        const joined = await joinRoomWithSavedProfile(roomId, user.id);
-        if (cancelled) return;
-
-        if (joined) {
-          router.replace(`/(main)/room/${roomId}`);
-          return;
-        }
-
         const saved = await getSavedJoinProfile(user.id);
         if (cancelled) return;
 
         if (saved) {
-          applySavedProfile(saved);
+          setDisplayName(saved.display_name);
+          setAvatarUrl(saved.avatar_url ?? null);
+          setHeadline(saved.headline ?? '');
+          setBuilding(saved.building ?? '');
+          setLookingFor(saved.looking_for ?? '');
+          setCanHelpWith(saved.can_help_with ?? '');
+          setLinkedin(saved.linkedin_url ?? '');
         } else {
           setDisplayName(
-            user.user_metadata?.full_name ?? user.email?.split('@')[0] ?? ''
+            (user.user_metadata?.full_name as string | undefined) ??
+              user.email?.split('@')[0] ??
+              ''
           );
         }
       } catch (err: unknown) {
@@ -157,14 +126,14 @@ export default function ProfileSetupScreen() {
     return () => {
       cancelled = true;
     };
-  }, [user, roomId, router, applySavedProfile]);
+  }, [user]);
 
   const pickAvatar = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       allowsEditing: true,
       aspect: [1, 1],
-      quality: 0.8,
+      quality: 0.85,
     });
 
     if (!result.canceled && result.assets[0]) {
@@ -173,11 +142,11 @@ export default function ProfileSetupScreen() {
     }
   };
 
-  const handleJoin = async () => {
-    if (!user || !roomId) return;
+  const handleSave = async () => {
+    if (!user) return;
 
     if (!displayName.trim()) {
-      Alert.alert('Name required', 'Tell us what to call you in this room.');
+      Alert.alert('Name required', 'Tell us what to call you in rooms.');
       return;
     }
 
@@ -192,7 +161,7 @@ export default function ProfileSetupScreen() {
         resolvedAvatarUrl = avatarUrl;
       }
 
-      await joinRoom(roomId, user.id, {
+      await updateMembershipProfile(user.id, {
         display_name: displayName.trim(),
         avatar_url: resolvedAvatarUrl,
         headline: headline.trim() || undefined,
@@ -202,9 +171,9 @@ export default function ProfileSetupScreen() {
         linkedin_url: linkedin.trim() || undefined,
       });
 
-      router.replace(`/(main)/room/${roomId}`);
+      router.back();
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to join room';
+      const message = err instanceof Error ? err.message : 'Failed to save profile';
       Alert.alert('Error', message);
     } finally {
       setLoading(false);
@@ -251,13 +220,9 @@ export default function ProfileSetupScreen() {
             <Ionicons name="arrow-back" size={20} color={NAVY} />
           </Pressable>
 
-          <View style={styles.titleRow}>
-            <Text style={styles.title}>Set up your profile</Text>
-          </View>
+          <Text style={styles.title}>Edit profile</Text>
           <Text style={styles.sub}>
-            {hasSavedProfile
-              ? 'Review your profile for this room — we pulled in your saved details.'
-              : 'Help others know what you\u2019re building and how you can connect in this room.'}
+            Updates apply to every room you&apos;ve joined, so people always see your latest info.
           </Text>
 
           <Pressable onPress={pickAvatar} style={({ pressed }) => [styles.avatarCard, pressed && styles.pressed]}>
@@ -268,9 +233,6 @@ export default function ProfileSetupScreen() {
               </View>
             </View>
             <Text style={styles.avatarTitle}>{hasPhoto ? 'Change photo' : 'Add your photo'}</Text>
-            <Text style={styles.avatarSub}>
-              {hasPhoto ? 'Tap to update your photo' : 'Optional — helps people recognize you'}
-            </Text>
           </Pressable>
 
           <Text style={styles.sectionLabel}>About you</Text>
@@ -326,29 +288,20 @@ export default function ProfileSetupScreen() {
             </FormRow>
           </View>
 
-          <View style={styles.tipBox}>
-            <View style={styles.tipIconWrap}>
-              <Ionicons name="lock-closed-outline" size={20} color={PURPLE} />
-            </View>
-            <Text style={styles.tipText}>
-              Only people in this room can see your profile. Your info stays private and secure.
-            </Text>
-          </View>
-
           <Pressable
-            onPress={handleJoin}
+            onPress={handleSave}
             disabled={loading || !displayName.trim()}
             style={({ pressed }) => [
-              styles.joinBtn,
-              (!displayName.trim() || loading) && styles.joinBtnDisabled,
+              styles.saveBtn,
+              (!displayName.trim() || loading) && styles.saveBtnDisabled,
               pressed && displayName.trim() && !loading && styles.pressed,
             ]}>
             {loading ? (
               <ActivityIndicator color="#FFFFFF" />
             ) : (
               <>
-                <Text style={styles.joinBtnText}>Join Room</Text>
-                <Ionicons name="chevron-forward" size={18} color="#FFFFFF" />
+                <Text style={styles.saveBtnText}>Save changes</Text>
+                <Ionicons name="checkmark" size={18} color="#FFFFFF" />
               </>
             )}
           </Pressable>
@@ -392,17 +345,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 16,
   },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 8,
-  },
   title: {
     fontFamily: 'DMSerifDisplay_400Regular',
     fontSize: 34,
     lineHeight: 42,
     color: NAVY,
+    marginBottom: 8,
   },
   sub: {
     color: MUTED,
@@ -419,11 +367,6 @@ const styles = StyleSheet.create({
     paddingVertical: 24,
     paddingHorizontal: 20,
     marginBottom: 8,
-    shadowColor: '#1A1A2E',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.06,
-    shadowRadius: 20,
-    elevation: 3,
   },
   avatarWrap: {
     position: 'relative',
@@ -446,11 +389,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: NAVY,
-  },
-  avatarSub: {
-    fontSize: 13,
-    color: MUTED,
-    marginTop: 4,
   },
   sectionLabel: {
     fontFamily: 'DMSerifDisplay_400Regular',
@@ -484,78 +422,41 @@ const styles = StyleSheet.create({
   },
   formBody: {
     flex: 1,
-    paddingTop: 2,
+    minWidth: 0,
   },
   formLabel: {
     fontSize: 12,
     fontWeight: '600',
     color: MUTED,
-    marginBottom: 4,
+    marginBottom: 6,
   },
   rowInput: {
     fontSize: 15,
-    lineHeight: 20,
     color: NAVY,
-    fontWeight: '600',
     padding: 0,
-    margin: 0,
-    minHeight: 20,
-    ...(Platform.OS === 'android' ? { includeFontPadding: false } : null),
+    minHeight: 22,
   },
   divider: {
     height: 1,
     backgroundColor: '#F3F4F6',
     marginLeft: 62,
   },
-  tipBox: {
+  saveBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    backgroundColor: '#F3F0FA',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#EDE8FF',
-    padding: 14,
-    marginTop: 16,
-  },
-  tipIconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
     justifyContent: 'center',
-  },
-  tipText: {
-    flex: 1,
-    fontSize: 13,
-    lineHeight: 19,
-    color: MUTED,
-    fontWeight: '500',
-  },
-  joinBtn: {
-    marginTop: 20,
-    backgroundColor: NAVY,
-    borderRadius: 16,
-    paddingVertical: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
     gap: 8,
-    shadowColor: NAVY,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.2,
-    shadowRadius: 16,
-    elevation: 4,
+    backgroundColor: PURPLE,
+    borderRadius: 16,
+    paddingVertical: 16,
+    marginTop: 24,
   },
-  joinBtnDisabled: {
-    opacity: 0.45,
-    shadowOpacity: 0,
-    elevation: 0,
+  saveBtnDisabled: {
+    opacity: 0.5,
   },
-  joinBtnText: {
+  saveBtnText: {
     color: '#FFFFFF',
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: '700',
   },
   pressed: {

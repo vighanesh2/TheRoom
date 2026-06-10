@@ -28,5 +28,6 @@ export const COLOR_PRESETS = [
 
 export function getGradientColors(id: string): [string, string, ...string[]] {
   const preset = GRADIENT_PRESETS.find((g) => g.id === id);
-  return preset?.colors ?? GRADIENT_PRESETS[0].colors;
+  const midnight = GRADIENT_PRESETS.find((g) => g.id === 'midnight');
+  return preset?.colors ?? midnight?.colors ?? GRADIENT_PRESETS[0].colors;
 }

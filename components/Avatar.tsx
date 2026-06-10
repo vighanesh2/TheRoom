@@ -39,9 +39,10 @@ type AvatarStackProps = {
   members: Pick<RoomMember, 'display_name' | 'avatar_url'>[];
   max?: number;
   size?: number;
+  borderColor?: string;
 };
 
-export function AvatarStack({ members, max = 4, size = 36 }: AvatarStackProps) {
+export function AvatarStack({ members, max = 4, size = 36, borderColor = colors.surface }: AvatarStackProps) {
   const visible = members.slice(0, max);
   const overflow = members.length - max;
 
@@ -51,7 +52,7 @@ export function AvatarStack({ members, max = 4, size = 36 }: AvatarStackProps) {
         <View
           key={`${member.display_name}-${index}`}
           style={[styles.stackItem, { marginLeft: index === 0 ? 0 : -size * 0.35, zIndex: max - index }]}>
-          <View style={styles.stackBorder}>
+          <View style={[styles.stackBorder, { borderColor }]}>
             <Avatar name={member.display_name} uri={member.avatar_url} size={size} />
           </View>
         </View>
@@ -65,6 +66,7 @@ export function AvatarStack({ members, max = 4, size = 36 }: AvatarStackProps) {
               height: size,
               borderRadius: size / 2,
               marginLeft: -size * 0.35,
+              borderColor,
             },
           ]}>
           <Text style={[styles.overflowText, { fontSize: size * 0.32 }]}>+{overflow}</Text>

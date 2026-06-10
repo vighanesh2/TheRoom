@@ -18,7 +18,8 @@ create table if not exists public.rooms (
   starts_at timestamptz not null,
   location text,
   cover_type text not null default 'gradient' check (cover_type in ('image', 'color', 'gradient')),
-  cover_value text not null default 'sunset',
+  cover_value text not null default 'midnight',
+  cover_text_color text not null default '#FFFFFF',
   privacy text not null default 'public' check (privacy in ('public', 'private')),
   invite_code text not null unique,
   created_at timestamptz not null default now(),
@@ -109,6 +110,9 @@ alter table public.room_invites enable row level security;
 create policy "Profiles are viewable by authenticated users"
   on public.profiles for select to authenticated using (true);
 
+create policy "Users can insert own profile"
+  on public.profiles for insert to authenticated with check (auth.uid() = id);
+
 create policy "Users can update own profile"
   on public.profiles for update to authenticated using (auth.uid() = id);
 
@@ -145,5 +149,39 @@ create policy "Hosts can create invites"
     )
   );
 
--- Storage: create a public bucket named "room-assets" in Supabase Dashboard.
--- Then add policies allowing authenticated uploads and public reads.
+-- Storage: create a public bucket named "room-assets" in Supabase Dashboard (public read).
+insert into storage.buckets (id, name, public)
+values ('room-assets', 'room-assets', true)
+on conflict (id) do nothing;
+
+create policy "Public read room assets"
+  on storage.objects for select to public
+  using (bucket_id = 'room-assets');
+
+create policy "Users upload own room assets"
+  on storage.objects for insert to authenticated
+  with check (
+    bucket_id = 'room-assets'
+    and (
+      (storage.foldername(name))[1] = 'avatars'
+      and (storage.foldername(name))[2] = auth.uid()::text
+    )
+    or (
+      (storage.foldername(name))[1] = 'covers'
+      and (storage.foldername(name))[2] = auth.uid()::text
+    )
+  );
+
+create policy "Users update own room assets"
+  on storage.objects for update to authenticated
+  using (
+    bucket_id = 'room-assets'
+    and (
+      (storage.foldername(name))[1] = 'avatars'
+      and (storage.foldername(name))[2] = auth.uid()::text
+    )
+    or (
+      (storage.foldername(name))[1] = 'covers'
+      and (storage.foldername(name))[2] = auth.uid()::text
+    )
+  );
