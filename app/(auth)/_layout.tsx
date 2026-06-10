@@ -1,16 +1,21 @@
+import { Fredoka_600SemiBold, useFonts } from '@expo-google-fonts/fredoka';
 import { Redirect, Stack } from 'expo-router';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
 
-import { colors } from '@/constants/theme';
 import { useAuth } from '@/lib/auth';
 
 export default function AuthLayout() {
   const { session, loading } = useAuth();
+  const [fontsLoaded] = useFonts({
+    Fredoka_600SemiBold,
+  });
 
-  if (loading) {
+  if (loading || !fontsLoaded) {
     return (
       <View style={styles.container}>
-        <ActivityIndicator size="large" color={colors.accent} />
+        <StatusBar style="light" />
+        <ActivityIndicator size="large" color="#FFFFFF" />
       </View>
     );
   }
@@ -20,9 +25,12 @@ export default function AuthLayout() {
   }
 
   return (
-    <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="login" />
-    </Stack>
+    <>
+      <StatusBar style="light" />
+      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#08080e' } }}>
+        <Stack.Screen name="login" />
+      </Stack>
+    </>
   );
 }
 
@@ -31,6 +39,6 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.background,
+    backgroundColor: '#08080e',
   },
 });
